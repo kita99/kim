@@ -84,6 +84,8 @@ struct editorConfig {
   erow *row;
   int dirty;
   char *filename;
+  char *mode;
+  char currentChar;
   char statusmsg[80];
   time_t statusmsg_time;
   struct editorSyntax *syntax;
@@ -607,11 +609,14 @@ void editorDrawRows(struct abuf *ab) {
 void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4);
   char status[80], rstatus[80];
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
+  int len = snprintf(status, sizeof(status), "%.20s | %.20s - %d lines %s",
+      E.mode,
       E.filename ? E.filename : "[No Name]", E.numrows,
       E.dirty ? "(modified)" : "");
-  int rlen = snprintf(rstatus, sizeof(rstatus), "%s | %d/%d",
-      E.syntax ? E.syntax->filetype : "no ft", E.cy + 1, E.numrows);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%s | %d/%d | %d",
+      E.syntax ? E.syntax->filetype : "no ft",
+      E.cy + 1, E.numrows,
+      E.currentChar);
   if (len > E.screencols) len = E.screencols;
   abAppend(ab, status, len);
   while (len < E.screencols) {
@@ -828,6 +833,8 @@ int editorReadKey() {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
 
+  E.currentChar = c;
+
   if (c == '\x1b') {
     char seq[3];
 
@@ -868,18 +875,20 @@ int editorReadKey() {
     return '\x1b';
   }
 
-  switch (c) {
-    case 'k':
-      return UP;
+  if (!strncmp(E.mode, "NORMAL", strlen(E.mode))) {
+    switch (c) {
+      case 'k':
+        return UP;
 
-    case 'j':
-      return DOWN;
+      case 'j':
+        return DOWN;
 
-    case 'l':
-      return RIGHT;
+      case 'l':
+        return RIGHT;
 
-    case 'h':
-      return LEFT;
+      case 'h':
+        return LEFT;
+    }
   }
 
   return c;
@@ -971,81 +980,97 @@ void editorProcessKeypress() {
 
   int c = editorReadKey();
 
-  switch (c) {
-    case '\r':
-      editorInsertNewline();
-      break;
+  if (!strncmp(E.mode, "NORMAL", strlen(E.mode))) {
+    switch (c) {
+      case 'i':
+        E.mode = "INSERT";
+        break;
 
-    case CTRL_KEY('q'):
-      if (E.dirty && quit_times > 0) {
-        editorSetStatusMessage("WARNING!!! File has unsaved changes."
-            "Press Ctlr-Q %d more times to quit.", quit_times);
-        quit_times--;
-        return;
-      }
-      write(STDOUT_FILENO, "\x1b[2J", 4);
-      write(STDOUT_FILENO, "\x1b[H", 3);
-      exit(0);
-      break;
+      case DOWN:
+      case UP:
+      case LEFT:
+      case RIGHT:
+        editorMoveCursor(c);
+        break;
 
-    case CTRL_KEY('s'):
-      editorSave();
-      break;
+      case HOME_KEY:
+        E.cx = 0;
+        break;
 
-    case HOME_KEY:
-      E.cx = 0;
-      break;
+      case END_KEY:
+        if (E.cy < E.numrows)
+          E.cx = E.row[E.cy].size;
+        break;
 
-    case END_KEY:
-      if (E.cy < E.numrows)
-        E.cx = E.row[E.cy].size;
-      break;
+      case PAGE_UP:
+      case PAGE_DOWN:
+        {
+          if (c == PAGE_UP) {
+            E.cy = E.rowoff;
+          } else if (c == PAGE_DOWN) {
+            E.cy = E.rowoff + E.screenrows - 1;
+            if (E.cy > E.numrows) E.cy = E.numrows;
+          }
 
-    case CTRL_KEY('f'):
-      editorFind();
-      break;
-
-    case BACKSPACE:
-    case CTRL_KEY('h'):
-    case DEL_KEY:
-      if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
-      editorDelChar();
-      break;
-
-    case PAGE_UP:
-    case PAGE_DOWN:
-      {
-        if (c == PAGE_UP) {
-          E.cy = E.rowoff;
-        } else if (c == PAGE_DOWN) {
-          E.cy = E.rowoff + E.screenrows - 1;
-          if (E.cy > E.numrows) E.cy = E.numrows;
+          int times = E.screenrows;
+          while (times--)
+            editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
         }
+        break;
 
-        int times = E.screenrows;
-        while (times--)
-          editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-      }
-      break;
+      case CTRL_KEY('f'):
+        editorFind();
+        break;
 
-    case ARROW_DOWN:
-    case ARROW_UP:
-    case ARROW_LEFT:
-    case ARROW_RIGHT:
-    case DOWN:
-    case UP:
-    case LEFT:
-    case RIGHT:
-      editorMoveCursor(c);
-      break;
+      case CTRL_KEY('q'):
+        if (E.dirty && quit_times > 0) {
+          editorSetStatusMessage("WARNING!!! File has unsaved changes."
+              "Press Ctlr-Q %d more times to quit.", quit_times);
+          quit_times--;
+          return;
+        }
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
+        exit(0);
+        break;
 
-    case CTRL_KEY('l'):
-    case '\x1b':
-      break;
+      case CTRL_KEY('s'):
+        editorSave();
+        break;
 
-    default:
-      editorInsertChar(c);
-      break;
+      case CTRL_KEY('l'):
+        break;
+    }
+  } 
+
+  else if (!strncmp(E.mode, "INSERT", strlen(E.mode))) {
+    switch (c) {
+      case '\x1b':
+        E.mode = "NORMAL";
+        break;
+
+      case ARROW_DOWN:
+      case ARROW_UP:
+      case ARROW_LEFT:
+      case ARROW_RIGHT:
+        editorMoveCursor(c);
+        break;
+
+      case '\r':
+        editorInsertNewline();
+        break;
+
+      case BACKSPACE:
+      case CTRL_KEY('h'):
+      case DEL_KEY:
+        if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
+        editorDelChar();
+        break;
+
+      default:
+        editorInsertChar(c);
+        break;
+    }
   }
 }
 
@@ -1097,6 +1122,7 @@ void initEditor() {
   E.row = NULL;
   E.dirty = 0;
   E.filename = NULL;
+  E.mode = "NORMAL";
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.syntax = NULL;
