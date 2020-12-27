@@ -18,9 +18,9 @@
 /** defines **/
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define KILO_VERSION "0.0.1"
-#define KILO_TAB_STOP 8
-#define KILO_QUIT_TIMES 3
+#define KIM_VERSION "0.0.1"
+#define KIM_TAB_STOP 8
+#define KIM_QUIT_TIMES 3
 
 enum editorKey {
   BACKSPACE = 127,
@@ -343,7 +343,7 @@ int editorRowCxToRx(erow *row, int cx) {
   int j;
   for (j = 0; j < cx; j++) {
     if (row->chars[j] == '\t')
-      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+      rx += (KIM_TAB_STOP - 1) - (rx % KIM_TAB_STOP);
     rx++;
   }
   return rx;
@@ -354,7 +354,7 @@ int editorRowRxToCx(erow *row, int rx) {
   int cx;
   for (cx = 0; cx < row->size; cx++) {
     if (row->chars[cx] == '\t')
-      cur_rx += (KILO_TAB_STOP - 1) - (cur_rx % KILO_TAB_STOP);
+      cur_rx += (KIM_TAB_STOP - 1) - (cur_rx % KIM_TAB_STOP);
     cur_rx++;
 
     if (cur_rx > rx) return cx;
@@ -369,13 +369,13 @@ void editorUpdateRow(erow *row) {
     if (row->chars[j] == '\t') tabs++;
 
   free(row->render);
-  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+  row->render = malloc(row->size + tabs*(KIM_TAB_STOP - 1) + 1);
 
   int idx = 0;
   for (j = 0; j < row->size; j++) {
     if (row->chars[j] == '\t') {
       row->render[idx++] = ' ';
-      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+      while (idx % KIM_TAB_STOP != 0) row->render[idx++] = ' ';
     } else {
       row->render[idx++] = row->chars[j];
     }
@@ -548,7 +548,7 @@ void editorDrawRows(struct abuf *ab) {
     if (filerow >= E.numrows) {
       if (E.numrows == 0 && y == E.screenrows / 2) {
         char welcome[80];
-        int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo editor -- version %s", KILO_VERSION);
+        int welcomelen = snprintf(welcome, sizeof(welcome), "Kilo editor -- version %s", KIM_VERSION);
         if (welcomelen > E.screencols) welcomelen = E.screencols;
 
         int padding = (E.screencols - welcomelen) / 2;
@@ -976,7 +976,7 @@ char *editorPrompt(char *prompt, void(*callback)(char *, int)) {
 }
 
 void editorProcessKeypress() {
-  static int quit_times = KILO_QUIT_TIMES;
+  static int quit_times = KIM_QUIT_TIMES;
 
   int c = editorReadKey();
 
